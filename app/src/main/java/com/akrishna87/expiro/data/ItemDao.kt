@@ -15,6 +15,9 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE available = 0 ORDER BY expiryEpochDay DESC, name ASC")
     fun observeHistory(): Flow<List<Item>>
 
+    @Query("SELECT * FROM items")
+    suspend fun getAll(): List<Item>
+
     @Query("SELECT * FROM items WHERE available = 1")
     suspend fun getAvailable(): List<Item>
 

@@ -1,8 +1,11 @@
 package com.akrishna87.expiro.ui
 
 import android.app.TimePickerDialog
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.text.format.DateFormat
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -101,7 +104,6 @@ fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
     val filter by vm.filter.collectAsState()
 
     editor?.let { target ->
-        BackHandler { editor = null }
         EditorScreen(
             initial = target.item,
             onCancel = { editor = null },
@@ -149,6 +151,7 @@ fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
                 Tab.HISTORY -> HistoryScreen(history, vm::setAvailable, vm::delete)
                 Tab.SETTINGS -> SettingsScreen(
                     reminderDays, reminderTime, vm::setReminderDays, vm::setReminderTime,
+                    onExport = vm::exportBackup, onImport = vm::importBackup,
                 )
             }
         }
@@ -313,6 +316,9 @@ private fun ItemCard(item: Item, status: ExpiryStatus, onOpen: (Item) -> Unit, o
     ) {
         Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(6.dp).fillMaxHeight().background(c.accent))
+            if (item.photoUri != null) {
+                PhotoThumb(item.photoUri, 52.dp, Modifier.padding(start = 10.dp))
+            }
             Column(Modifier.weight(1f).padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp)) {
                 Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
@@ -420,8 +426,32 @@ private fun SettingsScreen(
     reminderTime: LocalTime,
     onDaysChange: (Int) -> Unit,
     onTimeChange: (LocalTime) -> Unit,
+    onExport: (Uri, (Result<Int>) -> Unit) -> Unit,
+    onImport: (Uri, (Result<Int>) -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) onExport(uri) { r ->
+            Toast.makeText(
+                context,
+                r.fold({ "Exported $it items" }, { "Export failed: ${it.message}" }),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) onImport(uri) { r ->
+            Toast.makeText(
+                context,
+                r.fold({ "Imported $it new items" }, { "That file isn't a valid Expiro backup" }),
+                Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
     }
@@ -482,6 +512,24 @@ private fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Backup", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Save your items to a file, or restore them on a new phone. " +
+                        "Importing adds items and skips ones you already have. Photos are not included.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        exportLauncher.launch("expiro-backup-${java.time.LocalDate.now()}.json")
+                    }) { Text("Export") }
+                    OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) { Text("Import") }
+                }
             }
         }
 

@@ -1,15 +1,19 @@
 package com.akrishna87.expiro.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.akrishna87.expiro.ExpiroApp
+import com.akrishna87.expiro.data.Backup
 import com.akrishna87.expiro.data.ExpiryStatus
 import com.akrishna87.expiro.data.Item
+import com.akrishna87.expiro.data.Photos
 import com.akrishna87.expiro.data.SettingsStore
 import com.akrishna87.expiro.data.status
 import com.akrishna87.expiro.work.Notifications
 import com.akrishna87.expiro.work.ReminderScheduler
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +21,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalTime
 
 enum class StatusFilter(val label: String) { ALL("All"), EXPIRED("Expired"), SOON("Soon"), FRESH("Fresh") }
@@ -95,6 +100,7 @@ class ItemsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun delete(item: Item) = viewModelScope.launch {
         dao.delete(item)
+        Photos.delete(item.photoUri)
         Notifications.cancel(expiro, item.id)
     }
 
@@ -106,5 +112,41 @@ class ItemsViewModel(app: Application) : AndroidViewModel(app) {
     fun setReminderTime(time: LocalTime) = viewModelScope.launch {
         settings.setReminderTime(time)
         ReminderScheduler.schedule(expiro, time)
+    }
+
+    /** Writes every item to [uri] as JSON. [onDone] gets the number of items or the error. */
+    fun exportBackup(uri: Uri, onDone: (Result<Int>) -> Unit) = viewModelScope.launch {
+        val result = runCatching {
+            withContext(Dispatchers.IO) {
+                val items = dao.getAll()
+                val out = expiro.contentResolver.openOutputStream(uri, "wt") ?: error("Cannot write file")
+                out.use { it.write(Backup.toJson(items).toByteArray()) }
+                items.size
+            }
+        }
+        onDone(result)
+    }
+
+    /** Adds items from a backup, skipping ones that already exist. [onDone] gets the number added. */
+    fun importBackup(uri: Uri, onDone: (Result<Int>) -> Unit) = viewModelScope.launch {
+        val result = runCatching {
+            withContext(Dispatchers.IO) {
+                val text = expiro.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+                    ?: error("Cannot read file")
+                val incoming = Backup.parse(text)
+                fun key(i: Item) = listOf(i.name.lowercase(), i.expiryEpochDay, i.quantity, i.weight, i.unit, i.available)
+                val existing = dao.getAll().map(::key).toMutableSet()
+                var added = 0
+                for (item in incoming) {
+                    if (existing.add(key(item))) {
+                        dao.insert(item)
+                        added++
+                    }
+                }
+                added
+            }
+        }
+        if (result.getOrDefault(0) > 0) ReminderScheduler.checkNow(expiro)
+        onDone(result)
     }
 }

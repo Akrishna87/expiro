@@ -1,10 +1,26 @@
 package com.akrishna87.expiro.ui
 
+import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.akrishna87.expiro.data.Photos
+import java.io.File
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -65,6 +81,39 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
     var showPicker by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var photoPath by rememberSaveable { mutableStateOf(initial?.photoUri) }
+    // A photo created during this editing session (deleted again if the user cancels or replaces it).
+    var newPhoto by rememberSaveable { mutableStateOf<String?>(null) }
+    var cameraFile by rememberSaveable { mutableStateOf<String?>(null) }
+
+    fun adopt(uri: Uri, temp: File?) {
+        scope.launch {
+            val saved = Photos.import(context, uri)
+            temp?.delete()
+            if (saved != null) {
+                Photos.delete(newPhoto)
+                newPhoto = saved
+                photoPath = saved
+            }
+        }
+    }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) adopt(uri, null)
+    }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val f = cameraFile?.let(::File)
+        if (ok && f != null) adopt(Uri.fromFile(f), f) else f?.delete()
+    }
+    val preview = rememberPhoto(photoPath, 900)
+
+    fun cancel() {
+        Photos.delete(newPhoto)
+        onCancel()
+    }
+    BackHandler { cancel() }
+
     val qty = quantity.toIntOrNull()
     val w = weight.replace(',', '.').toDoubleOrNull()
     val valid = name.isNotBlank() && qty != null && qty >= 1 && w != null && w > 0
@@ -74,7 +123,7 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
             TopAppBar(
                 title = { Text(if (initial == null) "Add item" else "Edit item") },
                 navigationIcon = {
-                    IconButton(onClick = onCancel) {
+                    IconButton(onClick = { cancel() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -85,6 +134,7 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
                 enabled = valid,
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 onClick = {
+                    if (initial?.photoUri != null && initial.photoUri != photoPath) Photos.delete(initial.photoUri)
                     val base = initial ?: Item(name = "", quantity = 1, weight = 1.0, unit = "g", expiryEpochDay = 0)
                     onSave(
                         base.copy(
@@ -95,6 +145,7 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
                             expiryEpochDay = expiryDay,
                             category = category,
                             notes = notes.trim(),
+                            photoUri = photoPath,
                             // Re-arm reminders if the date changed.
                             notifiedStage = if (initial != null && initial.expiryEpochDay == expiryDay) {
                                 initial.notifiedStage
@@ -179,6 +230,32 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
                 minLines = 3, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             )
+
+            SectionLabel("Photo (optional)")
+            if (preview != null) {
+                Image(
+                    bitmap = preview,
+                    contentDescription = "Item photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(16.dp)),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    val f = Photos.newCameraFile(context)
+                    cameraFile = f.absolutePath
+                    camera.launch(Photos.uriFor(context, f))
+                }) { Text("Camera") }
+                OutlinedButton(onClick = {
+                    gallery.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }) { Text("Gallery") }
+                if (photoPath != null) {
+                    TextButton(onClick = {
+                        if (photoPath == newPhoto) { Photos.delete(newPhoto); newPhoto = null }
+                        photoPath = null
+                    }) { Text("Remove") }
+                }
+            }
 
             if (initial != null) {
                 TextButton(onClick = { confirmDelete = true }, modifier = Modifier.align(Alignment.End)) {
