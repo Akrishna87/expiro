@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -157,7 +159,7 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
         bottomBar = {
             Button(
                 enabled = valid,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(16.dp),
                 onClick = {
                     if (initial?.photoUri != null && initial.photoUri != photoPath) Photos.delete(initial.photoUri)
                     val base = initial ?: Item(name = "", quantity = 1, weight = 1.0, unit = "g", expiryEpochDay = 0)
