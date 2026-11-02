@@ -34,7 +34,9 @@ Updates must be signed with the same key every time, so keep the keystore safe (
    - `EXPIRO_KEYSTORE_PASSWORD`
    - `EXPIRO_KEY_ALIAS` (e.g. `expiro`)
    - `EXPIRO_KEY_PASSWORD`
-3. Tag and push: `git tag v0.1.0 && git push origin v0.1.0`. CI builds the signed APK and attaches it to a GitHub Release.
+3. That's it. Every push to `main` (except docs-only changes) builds a signed APK and publishes it as a new
+   GitHub Release, tagged `v<MAJOR_MINOR>.<run number>` (see `.github/workflows/build.yml`).
+   The newest APK is always at `https://github.com/<owner>/expiro/releases/latest`.
 
 ## How reminders work
 
