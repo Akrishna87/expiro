@@ -1,6 +1,7 @@
 package com.akrishna87.expiro.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -12,6 +13,7 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
 
 class SettingsStore(private val context: Context) {
     private val reminderDaysKey = intPreferencesKey("reminder_days")
+    private val helpSeenKey = booleanPreferencesKey("help_seen")
     private val reminderHourKey = intPreferencesKey("reminder_hour")
     private val reminderMinuteKey = intPreferencesKey("reminder_minute")
 
@@ -19,6 +21,12 @@ class SettingsStore(private val context: Context) {
 
     val reminderTime: Flow<LocalTime> = context.dataStore.data.map {
         LocalTime.of(it[reminderHourKey] ?: DEFAULT_HOUR, it[reminderMinuteKey] ?: 0)
+    }
+
+    val helpSeen: Flow<Boolean> = context.dataStore.data.map { it[helpSeenKey] ?: false }
+
+    suspend fun setHelpSeen() {
+        context.dataStore.edit { it[helpSeenKey] = true }
     }
 
     suspend fun setReminderDays(days: Int) {

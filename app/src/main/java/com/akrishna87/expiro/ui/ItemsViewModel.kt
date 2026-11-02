@@ -60,6 +60,12 @@ class ItemsViewModel(app: Application) : AndroidViewModel(app) {
             viewModelScope, SharingStarted.WhileSubscribed(5_000), LocalTime.of(SettingsStore.DEFAULT_HOUR, 0),
         )
 
+    /** Defaults to true so the welcome prompt never flashes before the saved value loads. */
+    val helpSeen: StateFlow<Boolean> =
+        settings.helpSeen.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun markHelpSeen() = viewModelScope.launch { settings.setHelpSeen() }
+
     val filter = MutableStateFlow(FilterState())
 
     /** Items after search / filter / sort are applied. */

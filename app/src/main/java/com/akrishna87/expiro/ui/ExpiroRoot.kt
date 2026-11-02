@@ -1,6 +1,7 @@
 package com.akrishna87.expiro.ui
 
 import android.app.TimePickerDialog
+import androidx.activity.compose.BackHandler
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -95,6 +97,7 @@ private val dateFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(Fo
 fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
     var tab by rememberSaveable { mutableStateOf(Tab.ITEMS) }
     var editor by remember { mutableStateOf<EditorTarget?>(null) }
+    var showHelp by rememberSaveable { mutableStateOf(false) }
 
     val all by vm.active.collectAsState()
     val visible by vm.visible.collectAsState()
@@ -102,6 +105,13 @@ fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
     val reminderDays by vm.reminderDays.collectAsState()
     val reminderTime by vm.reminderTime.collectAsState()
     val filter by vm.filter.collectAsState()
+    val helpSeen by vm.helpSeen.collectAsState()
+
+    if (showHelp) {
+        BackHandler { showHelp = false }
+        HelpScreen(onBack = { showHelp = false })
+        return
+    }
 
     editor?.let { target ->
         EditorScreen(
@@ -113,9 +123,31 @@ fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
         return
     }
 
+    if (!helpSeen && tab == Tab.ITEMS) {
+        AlertDialog(
+            onDismissRequest = { vm.markHelpSeen() },
+            title = { Text("Welcome to Expiro") },
+            text = {
+                Text(
+                    "Track what you have and get reminded before it expires. " +
+                        "Tap + to add your first item. You can open the help guide any time with the ⓘ button at the top.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { vm.markHelpSeen(); showHelp = true }) { Text("Show me how") } },
+            dismissButton = { TextButton(onClick = { vm.markHelpSeen() }) { Text("Skip") } },
+        )
+    }
+
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(title = { Text(if (tab == Tab.ITEMS) "Expiro" else tab.label) })
+            CenterAlignedTopAppBar(
+                title = { Text(if (tab == Tab.ITEMS) "Expiro" else tab.label) },
+                actions = {
+                    IconButton(onClick = { showHelp = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Help")
+                    }
+                },
+            )
         },
         bottomBar = {
             NavigationBar {
@@ -152,6 +184,7 @@ fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
                 Tab.SETTINGS -> SettingsScreen(
                     reminderDays, reminderTime, vm::setReminderDays, vm::setReminderTime,
                     onExport = vm::exportBackup, onImport = vm::importBackup,
+                    onOpenHelp = { showHelp = true },
                 )
             }
         }
@@ -428,6 +461,7 @@ private fun SettingsScreen(
     onTimeChange: (LocalTime) -> Unit,
     onExport: (Uri, (Result<Int>) -> Unit) -> Unit,
     onImport: (Uri, (Result<Int>) -> Unit) -> Unit,
+    onOpenHelp: () -> Unit,
 ) {
     val context = LocalContext.current
     val exportLauncher = rememberLauncherForActivityResult(
@@ -530,6 +564,20 @@ private fun SettingsScreen(
                     }) { Text("Export") }
                     OutlinedButton(onClick = { importLauncher.launch(arrayOf("*/*")) }) { Text("Import") }
                 }
+            }
+        }
+
+        Card(
+            onClick = onOpenHelp,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Help & guide", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "How to add items, reminders, backup and more",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 
