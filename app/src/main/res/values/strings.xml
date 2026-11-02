@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Expiro</string>
+    <string name="channel_name">Expiry reminders</string>
+    <string name="channel_description">Reminders when items are about to expire</string>
+    <string name="notif_title">Expiring soon</string>
+    <string name="notif_in_days">%1$s expires in %2$d days</string>
+    <string name="notif_tomorrow">%1$s expires tomorrow</string>
+    <string name="notif_today">%1$s expires today</string>
+    <string name="notif_expired">%1$s expired %2$d day(s) ago</string>
+    <string name="action_mark_used">Mark as used</string>
+</resources>
