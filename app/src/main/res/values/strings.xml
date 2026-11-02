@@ -9,4 +9,7 @@
     <string name="notif_today">%1$s expires today</string>
     <string name="notif_expired">%1$s expired %2$d day(s) ago</string>
     <string name="action_mark_used">Mark as used</string>
+    <string name="widget_title">EXPIRING SOON</string>
+    <string name="widget_description">Shows the items that expire first</string>
+    <string name="widget_empty">Nothing tracked yet</string>
 </resources>

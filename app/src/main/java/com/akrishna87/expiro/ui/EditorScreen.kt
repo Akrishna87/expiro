@@ -21,6 +21,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import com.akrishna87.expiro.data.Photos
 import java.io.File
+import android.widget.Toast
+import com.akrishna87.expiro.data.ProductLookup
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -108,6 +111,28 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
     }
     val preview = rememberPhoto(photoPath, 900)
 
+    fun scanBarcode() {
+        GmsBarcodeScanning.getClient(context).startScan()
+            .addOnSuccessListener { barcode ->
+                val code = barcode.rawValue ?: return@addOnSuccessListener
+                scope.launch {
+                    val info = ProductLookup.find(code)
+                    if (info == null) {
+                        Toast.makeText(context, "Product $code not found. Enter details manually.", Toast.LENGTH_LONG).show()
+                    } else {
+                        name = info.name
+                        if (info.weight != null && info.unit != null) {
+                            weight = formatWeight(info.weight)
+                            unit = info.unit
+                        }
+                    }
+                }
+            }
+            .addOnFailureListener {
+                Toast.makeText(context, "Scanner unavailable on this phone", Toast.LENGTH_LONG).show()
+            }
+    }
+
     fun cancel() {
         Photos.delete(newPhoto)
         onCancel()
@@ -165,6 +190,10 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
                 singleLine = true, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             )
+
+            OutlinedButton(onClick = { scanBarcode() }, modifier = Modifier.fillMaxWidth()) {
+                Text("Scan barcode to fill in details")
+            }
 
             SectionLabel("Amount")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

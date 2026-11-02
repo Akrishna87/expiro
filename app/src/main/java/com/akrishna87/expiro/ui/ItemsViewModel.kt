@@ -11,6 +11,7 @@ import com.akrishna87.expiro.data.Item
 import com.akrishna87.expiro.data.Photos
 import com.akrishna87.expiro.data.SettingsStore
 import com.akrishna87.expiro.data.status
+import com.akrishna87.expiro.widget.ExpiroWidget
 import com.akrishna87.expiro.work.Notifications
 import com.akrishna87.expiro.work.ReminderScheduler
 import kotlinx.coroutines.Dispatchers
@@ -91,16 +92,19 @@ class ItemsViewModel(app: Application) : AndroidViewModel(app) {
     fun save(item: Item) = viewModelScope.launch {
         if (item.id == 0L) dao.insert(item) else dao.update(item)
         ReminderScheduler.checkNow(expiro)
+        ExpiroWidget.refresh(expiro)
     }
 
     fun setAvailable(item: Item, available: Boolean) = viewModelScope.launch {
         dao.setAvailable(item.id, available)
         if (!available) Notifications.cancel(expiro, item.id)
+        ExpiroWidget.refresh(expiro)
     }
 
     fun delete(item: Item) = viewModelScope.launch {
         dao.delete(item)
         Photos.delete(item.photoUri)
+        ExpiroWidget.refresh(expiro)
         Notifications.cancel(expiro, item.id)
     }
 
@@ -146,7 +150,10 @@ class ItemsViewModel(app: Application) : AndroidViewModel(app) {
                 added
             }
         }
-        if (result.getOrDefault(0) > 0) ReminderScheduler.checkNow(expiro)
+        if (result.getOrDefault(0) > 0) {
+            ReminderScheduler.checkNow(expiro)
+            ExpiroWidget.refresh(expiro)
+        }
         onDone(result)
     }
 }

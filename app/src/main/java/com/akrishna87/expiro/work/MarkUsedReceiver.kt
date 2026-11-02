@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.akrishna87.expiro.ExpiroApp
+import com.akrishna87.expiro.widget.ExpiroWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -19,6 +20,7 @@ class MarkUsedReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 app.db.itemDao().setAvailable(id, false)
+                ExpiroWidget.refresh(app)
             } finally {
                 pending.finish()
             }
