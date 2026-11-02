@@ -5,6 +5,10 @@ import com.akrishna87.expiro.data.AppDatabase
 import com.akrishna87.expiro.data.SettingsStore
 import com.akrishna87.expiro.work.Notifications
 import com.akrishna87.expiro.work.ReminderScheduler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class ExpiroApp : Application() {
     val db by lazy { AppDatabase.create(this) }
@@ -13,6 +17,8 @@ class ExpiroApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Notifications.createChannel(this)
-        ReminderScheduler.schedule(this)
+        CoroutineScope(Dispatchers.Default).launch {
+            ReminderScheduler.schedule(this@ExpiroApp, settings.reminderTime.first())
+        }
     }
 }

@@ -14,12 +14,11 @@ import java.util.concurrent.TimeUnit
 object ReminderScheduler {
     private const val DAILY = "expiro_daily_check"
     private const val NOW = "expiro_check_now"
-    private val REMINDER_TIME: LocalTime = LocalTime.of(9, 0)
 
-    /** Runs once a day around 09:00. WorkManager re-schedules itself after a reboot. */
-    fun schedule(context: Context) {
+    /** Runs once a day at [time]. WorkManager re-schedules itself after a reboot. */
+    fun schedule(context: Context, time: LocalTime) {
         val now = LocalDateTime.now()
-        var next = now.toLocalDate().atTime(REMINDER_TIME)
+        var next = now.toLocalDate().atTime(time)
         if (!next.isAfter(now)) next = next.plusDays(1)
         val delay = Duration.between(now, next).toMinutes()
 

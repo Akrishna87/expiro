@@ -1,28 +1,57 @@
 package com.akrishna87.expiro.ui
 
+import android.app.TimePickerDialog
+import android.text.format.DateFormat
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,19 +61,31 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.akrishna87.expiro.data.ExpiryStatus
 import com.akrishna87.expiro.data.Item
 import com.akrishna87.expiro.data.SettingsStore
+import com.akrishna87.expiro.data.status
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
-private enum class Tab(val label: String, val emoji: String) {
-    ITEMS("Items", "📦"), HISTORY("History", "🕘"), SETTINGS("Settings", "⚙️")
+private enum class Tab(val label: String, val icon: ImageVector) {
+    ITEMS("Items", Icons.Default.Home),
+    HISTORY("History", Icons.Default.DateRange),
+    SETTINGS("Settings", Icons.Default.Settings),
 }
 
-/** null = list; EditorTarget(null) = new item; EditorTarget(item) = edit. */
 private data class EditorTarget(val item: Item?)
+
+private val dateFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,9 +93,12 @@ fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
     var tab by rememberSaveable { mutableStateOf(Tab.ITEMS) }
     var editor by remember { mutableStateOf<EditorTarget?>(null) }
 
-    val active by vm.active.collectAsState()
+    val all by vm.active.collectAsState()
+    val visible by vm.visible.collectAsState()
     val history by vm.history.collectAsState()
     val reminderDays by vm.reminderDays.collectAsState()
+    val reminderTime by vm.reminderTime.collectAsState()
+    val filter by vm.filter.collectAsState()
 
     editor?.let { target ->
         BackHandler { editor = null }
@@ -62,19 +106,22 @@ fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
             initial = target.item,
             onCancel = { editor = null },
             onSave = { vm.save(it); editor = null },
+            onDelete = { item -> vm.delete(item); editor = null },
         )
         return
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Expiro") }) },
+        topBar = {
+            CenterAlignedTopAppBar(title = { Text(if (tab == Tab.ITEMS) "Expiro" else tab.label) })
+        },
         bottomBar = {
             NavigationBar {
                 Tab.entries.forEach { t ->
                     NavigationBarItem(
                         selected = tab == t,
                         onClick = { tab = t },
-                        icon = { Text(t.emoji) },
+                        icon = { Icon(t.icon, contentDescription = t.label) },
                         label = { Text(t.label) },
                     )
                 }
@@ -83,59 +130,274 @@ fun ExpiroRoot(vm: ItemsViewModel = viewModel()) {
         floatingActionButton = {
             if (tab == Tab.ITEMS) {
                 FloatingActionButton(onClick = { editor = EditorTarget(null) }) {
-                    Text("+ Add", modifier = Modifier.padding(horizontal = 16.dp))
+                    Icon(Icons.Default.Add, contentDescription = "Add item")
                 }
             }
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
+        Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
-                Tab.ITEMS -> ItemList(
-                    list = active,
-                    emptyText = "Nothing tracked yet. Tap “+ Add” to add your first item.",
+                Tab.ITEMS -> ItemsScreen(
+                    all = all,
+                    visible = visible,
+                    filter = filter,
                     reminderDays = reminderDays,
-                    primaryLabel = "Used up",
-                    onPrimary = { vm.setAvailable(it, false) },
-                    onEdit = { editor = EditorTarget(it) },
-                    onDelete = { vm.delete(it) },
+                    onFilter = vm::updateFilter,
+                    onOpen = { editor = EditorTarget(it) },
+                    onUsedUp = { vm.setAvailable(it, false) },
                 )
-                Tab.HISTORY -> ItemList(
-                    list = history,
-                    emptyText = "Items you mark as used up will show here.",
-                    reminderDays = reminderDays,
-                    primaryLabel = "Restore",
-                    onPrimary = { vm.setAvailable(it, true) },
-                    onEdit = null,
-                    onDelete = { vm.delete(it) },
+                Tab.HISTORY -> HistoryScreen(history, vm::setAvailable, vm::delete)
+                Tab.SETTINGS -> SettingsScreen(
+                    reminderDays, reminderTime, vm::setReminderDays, vm::setReminderTime,
                 )
-                Tab.SETTINGS -> SettingsScreen(reminderDays, vm::setReminderDays)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Items tab
+
+@Composable
+private fun ItemsScreen(
+    all: List<Item>,
+    visible: List<Item>,
+    filter: FilterState,
+    reminderDays: Int,
+    onFilter: ((FilterState) -> FilterState) -> Unit,
+    onOpen: (Item) -> Unit,
+    onUsedUp: (Item) -> Unit,
+) {
+    val counts = remember(all, reminderDays) {
+        ExpiryStatus.entries.associateWith { s -> all.count { it.status(reminderDays) == s } }
+    }
+    val categories = remember(all) { all.map { it.category }.filter { it.isNotEmpty() }.distinct().sorted() }
+    val grouped = filter.sort == SortOrder.EXPIRY && filter.status == StatusFilter.ALL
+
+    LazyColumn(
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                StatCard(Modifier.weight(1f), "Expired", counts[ExpiryStatus.EXPIRED] ?: 0, ExpiryStatus.EXPIRED) {
+                    onFilter { it.copy(status = StatusFilter.EXPIRED) }
+                }
+                StatCard(Modifier.weight(1f), "Soon", counts[ExpiryStatus.SOON] ?: 0, ExpiryStatus.SOON) {
+                    onFilter { it.copy(status = StatusFilter.SOON) }
+                }
+                StatCard(Modifier.weight(1f), "Fresh", counts[ExpiryStatus.FRESH] ?: 0, ExpiryStatus.FRESH) {
+                    onFilter { it.copy(status = StatusFilter.FRESH) }
+                }
+            }
+        }
+        item {
+            OutlinedTextField(
+                value = filter.query,
+                onValueChange = { q -> onFilter { it.copy(query = q) } },
+                placeholder = { Text("Search items") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (filter.query.isNotEmpty()) {
+                        IconButton(onClick = { onFilter { it.copy(query = "") } }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(28.dp),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                StatusFilter.entries.forEach { s ->
+                    FilterChip(
+                        selected = filter.status == s,
+                        onClick = { onFilter { it.copy(status = s) } },
+                        label = { Text(s.label) },
+                    )
+                }
+                if (categories.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    categories.forEach { c ->
+                        FilterChip(
+                            selected = filter.category == c,
+                            onClick = { onFilter { it.copy(category = if (it.category == c) null else c) } },
+                            label = { Text(c) },
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            var menu by remember { mutableStateOf(false) }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${visible.size} item${if (visible.size == 1) "" else "s"}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Box {
+                    TextButton(onClick = { menu = true }) { Text("Sort: ${filter.sort.label}") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        SortOrder.entries.forEach { s ->
+                            DropdownMenuItem(
+                                text = { Text(s.label) },
+                                onClick = { onFilter { it.copy(sort = s) }; menu = false },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (visible.isEmpty()) {
+            item {
+                EmptyState(
+                    if (all.isEmpty()) "Nothing tracked yet" else "No matches",
+                    if (all.isEmpty()) "Tap + to add your first item." else "Try a different search or filter.",
+                )
+            }
+        } else if (grouped) {
+            val groups = ExpiryStatus.entries.map { s -> s to visible.filter { it.status(reminderDays) == s } }
+            groups.filter { it.second.isNotEmpty() }.forEach { (status, list) ->
+                item(key = "header-$status") {
+                    Text(
+                        when (status) {
+                            ExpiryStatus.EXPIRED -> "Expired"
+                            ExpiryStatus.SOON -> "Expiring soon"
+                            ExpiryStatus.FRESH -> "Fresh"
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                        color = statusColors(status).accent,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                items(list, key = { it.id }) { item -> ItemCard(item, status, onOpen, onUsedUp) }
+            }
+        } else {
+            items(visible, key = { it.id }) { item -> ItemCard(item, item.status(reminderDays), onOpen, onUsedUp) }
+        }
+    }
+}
+
+@Composable
+private fun StatCard(modifier: Modifier, label: String, count: Int, status: ExpiryStatus, onClick: () -> Unit) {
+    val c = statusColors(status)
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = c.container, contentColor = c.onContainer),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text("$count", style = MaterialTheme.typography.headlineSmall)
+            Text(label, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun ItemCard(item: Item, status: ExpiryStatus, onOpen: (Item) -> Unit, onUsedUp: (Item) -> Unit) {
+    val c = statusColors(status)
+    Card(
+        onClick = { onOpen(item) },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Row(Modifier.height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(6.dp).fillMaxHeight().background(c.accent))
+            Column(Modifier.weight(1f).padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp)) {
+                Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    buildString {
+                        append(item.amountText())
+                        if (item.category.isNotEmpty()) append("  ·  ").append(item.category)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    item.expiryDate.format(dateFormat),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DaysBadge(item, c)
+            FilledTonalIconButton(onClick = { onUsedUp(item) }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                Icon(Icons.Default.Check, contentDescription = "Mark as used up")
             }
         }
     }
 }
 
 @Composable
-private fun ItemList(
-    list: List<Item>,
-    emptyText: String,
-    reminderDays: Int,
-    primaryLabel: String,
-    onPrimary: (Item) -> Unit,
-    onEdit: ((Item) -> Unit)?,
-    onDelete: (Item) -> Unit,
-) {
-    if (list.isEmpty()) {
-        Text(emptyText, modifier = Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
-        return
+private fun DaysBadge(item: Item, c: StatusColors) {
+    val d = item.daysLeft()
+    val (big, small) = when {
+        d < 0 -> "${-d}" to (if (-d == 1L) "day overdue" else "days overdue")
+        d == 0L -> "Today" to "expires"
+        d == 1L -> "1" to "day left"
+        else -> "$d" to "days left"
     }
+    Column(
+        Modifier.clip(RoundedCornerShape(12.dp)).background(c.container)
+            .widthIn(min = 68.dp).padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(big, style = MaterialTheme.typography.titleLarge, color = c.onContainer)
+        Text(small, style = MaterialTheme.typography.labelSmall, color = c.onContainer, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun EmptyState(title: String, subtitle: String) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+// -------------------------------------------------------------- History tab
+
+@Composable
+private fun HistoryScreen(history: List<Item>, onSetAvailable: (Item, Boolean) -> Unit, onDelete: (Item) -> Unit) {
     var toDelete by remember { mutableStateOf<Item?>(null) }
 
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        items(list, key = { it.id }) { item ->
-            ItemCard(item, reminderDays, primaryLabel, { onPrimary(item) }, onEdit?.let { { it(item) } }, { toDelete = item })
+    if (history.isEmpty()) {
+        EmptyState("No history yet", "Items you mark as used up will show here.")
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(history, key = { it.id }) { item ->
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(item.name, style = MaterialTheme.typography.titleMedium)
+                        Text(item.amountText(), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Expiry ${item.expiryDate.format(dateFormat)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            TextButton(onClick = { toDelete = item }) { Text("Delete") }
+                            OutlinedButton(onClick = { onSetAvailable(item, true) }) { Text("Restore") }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -150,56 +412,93 @@ private fun ItemList(
     }
 }
 
+// ------------------------------------------------------------- Settings tab
+
 @Composable
-private fun ItemCard(
-    item: Item,
+private fun SettingsScreen(
     reminderDays: Int,
-    primaryLabel: String,
-    onPrimary: () -> Unit,
-    onEdit: (() -> Unit)?,
-    onDelete: () -> Unit,
+    reminderTime: LocalTime,
+    onDaysChange: (Int) -> Unit,
+    onTimeChange: (LocalTime) -> Unit,
 ) {
-    val days = item.daysLeft()
-    val (status, color) = when {
-        !item.available -> "Expiry ${item.expiryDate}" to MaterialTheme.colorScheme.onSurfaceVariant
-        days < 0 -> "Expired ${-days} day${if (-days == 1L) "" else "s"} ago" to Color(0xFFC62828)
-        days == 0L -> "Expires today" to Color(0xFFC62828)
-        days == 1L -> "Expires tomorrow" to Color(0xFFEF6C00)
-        days <= reminderDays -> "Expires in $days days" to Color(0xFFEF6C00)
-        else -> "Expires in $days days" to Color(0xFF2E7D32)
+    val context = LocalContext.current
+    val version = remember {
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
     }
 
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(item.amountText(), style = MaterialTheme.typography.bodyMedium)
-            Text(status, color = color, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            if (item.available) Text("Date: ${item.expiryDate}", style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                if (onEdit != null) TextButton(onClick = onEdit) { Text("Edit") }
-                TextButton(onClick = onDelete) { Text("Delete") }
-                OutlinedButton(onClick = onPrimary) { Text(primaryLabel) }
+    Column(
+        Modifier.padding(16.dp).fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Reminders", style = MaterialTheme.typography.titleMedium)
+
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Remind me before expiry", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (reminderDays == 1) "1 day before" else "$reminderDays days before",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(onClick = { onDaysChange(reminderDays - 1) }, enabled = reminderDays > 0) { Text("−") }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = { onDaysChange(reminderDays + 1) },
+                        enabled = reminderDays < SettingsStore.MAX_REMINDER_DAYS,
+                    ) { Text("+") }
+                }
+
+                Row(
+                    Modifier.fillMaxWidth().clickable {
+                        TimePickerDialog(
+                            context,
+                            { _, h, m -> onTimeChange(LocalTime.of(h, m)) },
+                            reminderTime.hour, reminderTime.minute,
+                            DateFormat.is24HourFormat(context),
+                        ).show()
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Reminder time", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Checked once a day",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        reminderTime.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                Text(
+                    "You get one reminder when an item enters the reminder window and another on the expiry day.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
-    }
-}
 
-@Composable
-private fun SettingsScreen(reminderDays: Int, onChange: (Int) -> Unit) {
-    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("Remind me before expiry", style = MaterialTheme.typography.titleMedium)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            OutlinedButton(onClick = { onChange(reminderDays - 1) }, enabled = reminderDays > 0) { Text("−") }
-            Text(
-                if (reminderDays == 1) "1 day" else "$reminderDays days",
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Button(onClick = { onChange(reminderDays + 1) }, enabled = reminderDays < SettingsStore.MAX_REMINDER_DAYS) { Text("+") }
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Column(Modifier.padding(16.dp)) {
+                Text("About", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Expiro $version",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Your data stays on this phone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        Text(
-            "You'll get one reminder when an item is within this many days of expiring, " +
-                "and another on the expiry day. Checks run daily around 9:00.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
     }
 }
