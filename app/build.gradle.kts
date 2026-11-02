@@ -72,5 +72,7 @@ dependencies {
 
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    testImplementation("junit:junit:4.13.2")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 }

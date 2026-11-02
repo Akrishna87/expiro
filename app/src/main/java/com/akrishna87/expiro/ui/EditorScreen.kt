@@ -26,6 +26,11 @@ import java.io.File
 import android.widget.Toast
 import com.akrishna87.expiro.data.ProductLookup
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.akrishna87.expiro.data.DateParser
+import com.akrishna87.expiro.data.Gs1
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -113,12 +118,55 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
     }
     val preview = rememberPhoto(photoPath, 900)
 
+    var expiryPhoto by rememberSaveable { mutableStateOf<String?>(null) }
+
+    fun readExpiry(file: File) {
+        fun fail(msg: String) {
+            file.delete()
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+        try {
+            val image = InputImage.fromFilePath(context, Photos.uriFor(context, file))
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS).process(image)
+                .addOnSuccessListener { result ->
+                    file.delete()
+                    val date = DateParser.findExpiry(result.text)
+                    if (date != null) {
+                        expiryDay = date.toEpochDay()
+                        Toast.makeText(
+                            context,
+                            "Expiry date set to ${date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))}. Please check it matches the pack.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            "Couldn't find a date. Try again closer and in good light, or set it manually.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }
+                .addOnFailureListener { fail("Text reader not ready. Check your internet connection and try again.") }
+        } catch (e: Exception) {
+            fail("Couldn't read that photo")
+        }
+    }
+    val expiryCamera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val f = expiryPhoto?.let(::File)
+        if (ok && f != null) readExpiry(f) else f?.delete()
+    }
+
     fun scanBarcode() {
         GmsBarcodeScanning.getClient(context).startScan()
             .addOnSuccessListener { barcode ->
                 val code = barcode.rawValue ?: return@addOnSuccessListener
+                // Some barcodes (medicine / trade packs) carry the expiry date themselves.
+                Gs1.parseExpiry(code)?.let { d ->
+                    expiryDay = d.toEpochDay()
+                    Toast.makeText(context, "Expiry date read from barcode: $d", Toast.LENGTH_LONG).show()
+                }
                 scope.launch {
-                    val info = ProductLookup.find(code)
+                    val info = ProductLookup.find(Gs1.productNumber(code) ?: code)
                     if (info == null) {
                         Toast.makeText(context, "Product $code not found. Enter details manually.", Toast.LENGTH_LONG).show()
                     } else {
@@ -230,6 +278,14 @@ fun EditorScreen(initial: Item?, onCancel: () -> Unit, onSave: (Item) -> Unit, o
                     )
                 }
             }
+            OutlinedButton(
+                onClick = {
+                    val f = Photos.newCameraFile(context)
+                    expiryPhoto = f.absolutePath
+                    expiryCamera.launch(Photos.uriFor(context, f))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Read date from pack (camera)") }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 QuickDate("+1 week") { it.plusWeeks(1) }.let { (label, f) ->
                     AssistChip(onClick = { expiryDay = f(LocalDate.now()).toEpochDay() }, label = { Text(label) })

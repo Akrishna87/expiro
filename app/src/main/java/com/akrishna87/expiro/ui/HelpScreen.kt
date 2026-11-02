@@ -83,8 +83,15 @@ private val sections = listOf(
     HelpSection(
         "Scan a barcode",
         "• In the add screen, tap \"Scan barcode to fill in details\" and point the camera at the product's barcode.\n" +
-            "• If the product is found, its name and weight are filled in for you. You still need to set the expiry date.\n" +
+            "• If the product is found, its name and weight are filled in for you. Normal barcodes don't contain the expiry date, so set it yourself or use \"Read date from pack\" below.\n" +
             "• This needs internet and Google Play services, and not every product is in the database. If it isn't found, just type the details yourself.",
+    ),
+    HelpSection(
+        "Read the expiry date with the camera",
+        "• In the add/edit screen, tap \"Read date from pack (camera)\" and take a clear, close photo of the printed date, such as \"EXP 12/11/2026\" or \"BEST BEFORE 12 NOV 26\".\n" +
+            "• The date is filled in for you. Always check it matches the pack before saving.\n" +
+            "• Dates are read as day/month/year. If several dates are printed, it prefers the one after EXP / USE BY / BEST BEFORE, otherwise the latest.\n" +
+            "• Works best in good light with the date flat and in focus. The first time, it may need internet to download the text reader. If it can't find a date, set it by hand.",
     ),
     HelpSection(
         "Home-screen widget",
